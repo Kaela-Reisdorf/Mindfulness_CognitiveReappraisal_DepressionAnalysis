@@ -1,0 +1,234 @@
+---
+title: "TroyetalAnalysis1"
+author: "KaelaReisdorf"
+date: "2024-11-26"
+output: html_document
+---
+#Data Cleaning & Set up for Analysis
+```{r}
+TroyetalFinalData <-read.csv("C:/Users/kaela/Downloads/TroyetalFinalData.csv", header=TRUE)
+View(TroyetalFinalData)
+
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(emmeans)
+```
+
+##Creating my own subset of the data to view only what is needed for my analysis:
+```{r}
+colnames(TroyetalFinalData)
+
+troyAnalysis<- subset(TroyetalFinalData [,c(1:29, 35:49)])
+
+```
+
+
+##Renamed columns:
+```{r}
+colnames(troyAnalysis) <- c("participant ID", "dateOfTest", "dobMonth","dobDay", "dobYear","raceEthnicity", "raceEthnicityDescription", "gender", "genderDescription", "income", "CRA1", "CRA2", "CRA3", "CRA4", "CRA5", "CRA6", "CRA7", "CRA8",
+"HCRA1", "HCRA2", "HCRA3", "HCRA4", "HCRA5", "HCRA6", 
+"DS1", "DS2", "DS3", "DS4", "DS5",
+"M1","M2","M3","M4","M5","M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M15")
+```
+
+##Change particpant answers to numerical values:
+```{r}
+troyAnalysis <- troyAnalysis %>%
+  mutate(across(c("CRA1", "CRA2", "CRA3", "CRA4", "CRA5", "CRA6", "CRA7", "CRA8","HCRA1","HCRA2","HCRA3","HCRA4","HCRA5","HCRA6"), as.character))
+
+##Cognitive Reappraisal, Habitual Cognitive Reappraisal, and Depressive Symptoms##
+troyAnalysis <- troyAnalysis %>%
+  mutate(across(c("CRA1","CRA2","CRA3","CRA4","CRA5","CRA6","CRA7","CRA8"), ~ case_when(
+    . == "Strongly disagree" ~ 1,
+    . == "Disagree" ~ 2,
+    . == "Somewhat disagree" ~ 3,
+    . == "Neutral" ~ 4,
+    . == "Agree" ~ 5,
+    . == "Somewhat agree" ~ 6,
+    . == "Strongly agree" ~ 7,
+    TRUE ~ NA_real_
+  )), across(c("HCRA1","HCRA2","HCRA3","HCRA4","HCRA5","HCRA6"),
+                ~ case_when(
+                  . == "Strongly disagree" ~ 1,
+                  . == "Disagree" ~ 2,
+                  . == "Somewhat disagree" ~ 3,
+                  . == "Neither agree nor disagree" ~ 4,
+                  . == "Agree" ~ 5,
+                  . == "Somewhat agree" ~ 6,
+                  . == "Strongly agree" ~ 7,
+                  TRUE ~ NA_real_ 
+  )), across(c("DS1", "DS2", "DS3", "DS4", "DS5"),
+                ~ case_when(
+                  . == "Rarely or none of the time (less than 1 day)" ~ 1,
+                  . == "Some or a little of the time (1-2 days)" ~ 2,
+                  . == "Occasionally or moderate amount of time (3-4 days)" ~ 3,
+                  . == "Most or all of the time (5-7 days)" ~ 4,
+                  TRUE ~ NA_real_)))
+
+```
+
+```{r}
+##Mindfulness##
+troyAnalysis <- troyAnalysis %>%
+  mutate(across(c("M1","M2","M3","M4","M5","M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14", "M15"),
+                ~ case_when(
+                  . == "Almost Never" ~ 1,
+                  . == "Very Infrequently" ~ 2,
+                  . == "Somewhat Infrequently" ~ 3,
+                  . == "Somewhat Frequently" ~ 4,
+                  . == "Very Frequently" ~ 5,
+                  . == "Almost Always" ~ 6, 
+                  TRUE ~ NA_real_ )))
+```
+
+
+
+#Statistical Analysis Work
+
+
+##Average scores for CRA, HCRA, DS, & M
+```{r}
+###If trouble with code, restart R - possible errors occur when using mutate + starts with functions
+troyAnalysis <- troyAnalysis %>%
+  mutate(
+    crScore = rowMeans(select(., starts_with("CRA")), na.rm = TRUE),
+    hcrScore = rowMeans(select(., starts_with("HCRA")), na.rm = TRUE),
+    dsScore = rowMeans(select(., starts_with("DS")), na.rm = TRUE),
+    mScore = rowMeans(select(., starts_with("M")), na.rm = TRUE),
+    crCentered = crScore - mean(crScore, na.rm = TRUE),
+    hcrCentered = hcrScore - mean(hcrScore, na.rm = TRUE),
+    dsCentered = dsScore - mean(dsScore, na.rm = TRUE),
+    mCentered = mScore - mean(mScore, na.rm = TRUE)
+  )
+
+##code with centered mean scores
+```
+
+
+##Research Question 1: How does mindfulness as a moderator influence the relationship between cognitive reappraisal and depression symptoms in individuals?
+  ###Hypothesis: Individuals will show a stronger negative relationship between cognitive reappraisal and depressive symptoms as there levels of mindfulness increase.
+```{r}
+library(rempsyc)
+library(easystats)
+```
+
+```{r}
+troyModerations <- nice_mod(
+  data = troyAnalysis,
+  response = "dsCentered",
+  predictor = "crCentered",
+  moderator = "mCentered"
+)
+troyModerations
+(modTable <- nice_table(troyModerations, highlight = TRUE))
+
+##Significance between depressive symptoms & mindfulness
+```
+
+```{r}
+troySlopes <- nice_slopes(
+  data = troyAnalysis,
+  response = "dsCentered",
+  predictor = "crCentered",
+  moderator = "mCentered"
+)
+troySlopes
+nice_table(troySlopes, highlight = TRUE)
+```
+
+###Visual for research question 1:
+```{r}
+#defining model for plot function
+moderateTroy1 <- lm(dsCentered ~ crCentered * mCentered, data = troyAnalysis)
+
+#plotting the model
+library(interactions)
+interact_plot(moderateTroy1, pred = "crCentered", modx = "mCentered", interval = TRUE)
+```
+
+
+##Research Question 2: How do levels of HCRA mediate the association between mindfulness and depressive symptoms?
+  ###Hypothesis: As HCRA and Mindfulness increase, depressive symptoms decrease.
+  
+```{r}
+library(mediation)
+#defining model HCRCA + Mindfulness -> Depressive Symptoms
+troyMediator<-lm(hcrCentered ~ mCentered, data = troyAnalysis)
+
+troyMediatorOutcome<-lm(dsCentered ~ mCentered + hcrCentered, data = troyAnalysis)
+troyMediator
+
+researchResult2 <- mediate(troyMediator, troyMediatorOutcome, treat = "mCentered", mediator = "hcrCentered", boot = TRUE)
+
+summary(researchResult2)
+```
+
+###Visual for research question 2:
+```{r}
+ggplot(troyAnalysis, aes(x = mScore, y = dsScore)) +
+  geom_point() +  
+  # Direct path: Mindfulness -> Depressive Symptoms
+  geom_smooth(method = "lm", color = "purple", se = TRUE, linetype = "dashed") +  
+  # Indirect path: Mindfulness -> HCRA -> Depressive Symptoms
+  geom_smooth(aes(x = mScore, y = hcrScore), method = "lm", color = "blue", se = FALSE, linetype = "solid") +  
+  geom_smooth(aes(x = hcrScore, y = dsScore), method = "lm", color = "blue", se = FALSE, linetype = "solid") +
+  labs(
+    title = "HCRA as a Mediator for Mindfulness and Depressive Symptoms",
+    x = "Mindfulness",
+    y = "Depressive Symptoms",
+    subtitle = "Purple dashed line = Direct Effect, Blue solid lines = Indirect Effect (Mediation)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+##Research Question 3: To what extent do mindfulness and CRA independentaly predict depressive symptoms?
+  ###Hypothesis: Mindfulness and CRA independently will decrease depressive symptoms.
+  
+```{r}
+troyLM <- lm(dsCentered ~ mCentered + crCentered, data = troyAnalysis)
+
+summary(troyLM)
+```
+
+###Visual Mindfulness->Depressive Symptoms
+```{r}
+ggplot(troyAnalysis, aes(x = mCentered, y = dsCentered)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "purple", linetype = "solid") +
+  labs(title = "Relationship Between Mindfulness and Depressive Symptoms",
+       x = "Mindfulness",
+       y = "Depressive Symptoms") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+```
+
+###Visual CRA -> Depressive Symptoms
+```{r}
+ggplot(troyAnalysis, aes(x = crCentered, y = dsCentered)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", se = FALSE, color = "purple", linetype = "solid") +
+  labs(title = "Relationship Between Cognitive Reappraisal and Depressive Symptoms",
+       x = "Cognitive Reappraisal",
+       y = "Depressive Symptoms") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10)
+  )
+```
+
+
+```{r}
+write.csv(troyAnalysis, "troyAnalysis_subset.csv", row.names = FALSE)
+```
+
